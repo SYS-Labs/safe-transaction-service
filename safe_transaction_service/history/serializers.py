@@ -731,6 +731,7 @@ class TransferResponseSerializer(serializers.Serializer):
     value = serializers.CharField(allow_null=True, source="_value")
     token_id = serializers.CharField(allow_null=True, source="_token_id")
     token_address = EthereumAddressField(allow_null=True, default=None)
+    unique_hash = serializers.SerializerMethodField()
 
     def get_fields(self):
         result = super().get_fields()
@@ -748,6 +749,12 @@ class TransferResponseSerializer(serializers.Serializer):
             if obj["_token_id"] is not None:
                 return TransferType.ERC721_TRANSFER.name
             return TransferType.UNKNOWN.name
+
+    def get_unique_hash(self, obj: TransferDict) -> str:
+        if self.get_type(obj) == "ETHER_TRANSFER":
+            return "i" + obj["transaction_hash"] + obj["_trace_address"]
+        else:
+            return "e" + obj["transaction_hash"] + str(obj["_log_index"])
 
     def validate(self, attrs):
         super().validate(attrs)
