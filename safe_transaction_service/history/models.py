@@ -429,6 +429,26 @@ class TokenTransferQuerySet(models.QuerySet):
     def token_txs(self):
         raise NotImplementedError
 
+    def token_transfer_values(
+        self,
+        erc20_queryset: QuerySet,
+        erc721_queryset: QuerySet,
+    ) -> TransferDict:
+        values = [
+            "block",
+            "transaction_hash",
+            "to",
+            "_from",
+            "_value",
+            "execution_date",
+            "_token_id",
+            "token_address",
+            "_log_index",
+        ]
+        return erc20_queryset.values(*values).union(
+            erc721_queryset.values(*values), all=True
+        )
+
 
 class TokenTransferManager(BulkCreateSignalMixin, models.Manager):
     def tokens_used_by_address(self, address: ChecksumAddress) -> Set[ChecksumAddress]:
@@ -844,6 +864,24 @@ class InternalTxQuerySet(models.QuerySet):
             .union(erc721_queryset.values(*values), all=True)
             .order_by("-block")
         )
+
+    def ether_txs_values(
+        self,
+        ether_queryset: QuerySet,
+    ) -> TransferDict:
+        values = [
+            "block",
+            "transaction_hash",
+            "to",
+            "_from",
+            "_value",
+            "execution_date",
+            "_token_id",
+            "token_address",
+            "_log_index",
+            "_trace_address",
+        ]
+        return ether_queryset.values(*values)
 
     def can_be_decoded(self):
         """

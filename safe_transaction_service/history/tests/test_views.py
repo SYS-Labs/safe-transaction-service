@@ -2208,10 +2208,12 @@ class TestViews(SafeTestCaseMixin, APITestCase):
         self.assertEqual(SafeContractDelegate.objects.count(), 0)
 
     def _get_unique_hash(self, obj) -> str:
+        # Remove 0x from ethereum_tx_id
+        transaction_hash = obj.ethereum_tx_id[2:]
         if hasattr(obj, "log_index"):
-            return "e" + obj.ethereum_tx_id + str(obj.log_index)
+            return "e" + transaction_hash + str(obj.log_index)
         else:
-            return "i" + obj.ethereum_tx_id + obj.trace_address
+            return "i" + transaction_hash + obj.trace_address
 
     def test_incoming_transfers_view(self):
         safe_address = Account.create().address
@@ -2641,6 +2643,102 @@ class TestViews(SafeTestCaseMixin, APITestCase):
         self.assertGreater(len(response.data["results"]), 0)
         for result in response.data["results"]:
             self.assertNotEqual(result["type"], TransferType.ETHER_TRANSFER.name)
+
+        # Test filtering ethereum transfer by unique_hash
+        response = self.client.get(
+            reverse("v1:history:transfers", args=(safe_address,))
+            + f"?unique_hash={self._get_unique_hash(internal_tx)}",
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        expected_results = [
+            {
+                "type": TransferType.ETHER_TRANSFER.name,
+                "executionDate": internal_tx.ethereum_tx.block.timestamp.isoformat().replace(
+                    "+00:00", "Z"
+                ),
+                "blockNumber": internal_tx.ethereum_tx.block_id,
+                "uniqueHash": internal_tx.unique_hash,
+                "transactionHash": internal_tx.ethereum_tx_id,
+                "to": safe_address,
+                "value": str(value),
+                "tokenId": None,
+                "tokenAddress": None,
+                "from": internal_tx._from,
+                "tokenInfo": None,
+            }
+        ]
+        self.assertEqual(response.json()["results"], expected_results)
+
+        # Test filtering ERC20 transfer by unique_hash
+        response = self.client.get(
+            reverse("v1:history:transfers", args=(safe_address,))
+            + f"?unique_hash={self._get_unique_hash(ethereum_erc_20_event)}",
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        expected_results = [
+            {
+                "type": TransferType.ERC20_TRANSFER.name,
+                "executionDate": ethereum_erc_20_event.ethereum_tx.block.timestamp.isoformat().replace(
+                    "+00:00", "Z"
+                ),
+                "blockNumber": ethereum_erc_20_event.ethereum_tx.block_id,
+                "uniqueHash": ethereum_erc_20_event.unique_hash,
+                "transactionHash": ethereum_erc_20_event.ethereum_tx_id,
+                "to": safe_address,
+                "value": str(token_value),
+                "tokenId": None,
+                "tokenAddress": ethereum_erc_20_event.address,
+                "from": ethereum_erc_20_event._from,
+                "tokenInfo": {
+                    "type": "ERC20",
+                    "address": token.address,
+                    "name": token.name,
+                    "symbol": token.symbol,
+                    "decimals": token.decimals,
+                    "logoUri": token.get_full_logo_uri(),
+                },
+            }
+        ]
+        self.assertEqual(response.json()["results"], expected_results)
+
+        # Test filtering ERC721 transfer by unique_hash
+        response = self.client.get(
+            reverse("v1:history:transfers", args=(safe_address,))
+            + f"?unique_hash={self._get_unique_hash(ethereum_erc_721_event)}",
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        expected_results = [
+            {
+                "type": TransferType.ERC721_TRANSFER.name,
+                "executionDate": ethereum_erc_721_event.ethereum_tx.block.timestamp.isoformat().replace(
+                    "+00:00", "Z"
+                ),
+                "transactionHash": ethereum_erc_721_event.ethereum_tx_id,
+                "uniqueHash": ethereum_erc_721_event.unique_hash,
+                "blockNumber": ethereum_erc_721_event.ethereum_tx.block_id,
+                "to": safe_address,
+                "value": None,
+                "tokenId": str(token_id),
+                "tokenAddress": ethereum_erc_721_event.address,
+                "from": ethereum_erc_721_event._from,
+                "tokenInfo": None,
+            }
+        ]
+        self.assertEqual(response.json()["results"], expected_results)
+
+        # Test error ethereum transfer because unique_hash is too short
+        response = self.client.get(
+            reverse("v1:history:transfers", args=(safe_address,))
+            + f"?unique_hash={self._get_unique_hash(internal_tx)[:-10]}",
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
 
     def test_safe_creation_view(self):
         invalid_address = "0x2A"

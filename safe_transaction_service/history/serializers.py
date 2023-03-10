@@ -751,10 +751,12 @@ class TransferResponseSerializer(serializers.Serializer):
             return TransferType.UNKNOWN.name
 
     def get_unique_hash(self, obj: TransferDict) -> str:
+        # Remove 0x on transaction_hash
+        transaction_hash = obj["transaction_hash"][2:]
         if self.get_type(obj) == "ETHER_TRANSFER":
-            return "i" + obj["transaction_hash"] + obj["_trace_address"]
+            return "i" + transaction_hash + obj["_trace_address"]
         else:
-            return "e" + obj["transaction_hash"] + str(obj["_log_index"])
+            return "e" + transaction_hash + str(obj["_log_index"])
 
     def validate(self, attrs):
         super().validate(attrs)

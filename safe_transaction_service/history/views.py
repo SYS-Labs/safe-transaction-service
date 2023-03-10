@@ -1,6 +1,6 @@
 import hashlib
 import logging
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from django.conf import settings
 from django.utils.decorators import method_decorator
@@ -839,6 +839,14 @@ class SafeTransferListView(ListAPIView):
     serializer_class = serializers.TransferWithTokenInfoResponseSerializer
     pagination_class = pagination.DefaultPagination
 
+    _schema_unique_hash = openapi.Parameter(
+        "unique_hash",
+        openapi.IN_QUERY,
+        type=openapi.TYPE_STRING,
+        default=None,
+        description="Parameter search by transfer unique hash",
+    )
+
     def add_tokens_to_transfers(self, transfers: TransferDict) -> TransferDict:
         tokens = {
             token.address: token
@@ -854,6 +862,37 @@ class SafeTransferListView(ListAPIView):
             transfer["token"] = tokens.get(transfer["token_address"])
         return transfers
 
+    # get_unique_hash_params split
+    def get_unique_hash_params(self, unique_hash: str) -> Tuple[str, str, str]:
+        """
+        Returns a tuple of type of transfer (i means InternalTx or e means TokenTransfer), transaction_hash, log_index
+        for transfer or trace_address for InternalTx
+        """
+        return unique_hash[0], unique_hash[1:65], unique_hash[65:]
+
+    def get_token_transfer(self, transaction_hash: str, log_index: str):
+        erc20_queryset = self.filter_queryset(
+            ERC20Transfer.objects.filter(
+                ethereum_tx=transaction_hash, log_index=log_index
+            ).token_txs()
+        )
+        erc721_queryset = self.filter_queryset(
+            ERC721Transfer.objects.filter(
+                ethereum_tx=transaction_hash, log_index=log_index
+            ).token_txs()
+        )
+        return ERC20Transfer.objects.token_transfer_values(
+            erc20_queryset, erc721_queryset
+        )
+
+    def get_ethereum_transfer(self, transaction_hash: str, trace_address: str):
+        ether_queryset = self.filter_queryset(
+            InternalTx.objects.ether_txs().filter(
+                ethereum_tx=transaction_hash, trace_address=trace_address
+            )
+        )
+        return InternalTx.objects.ether_txs_values(ether_queryset)
+
     def get_transfers(self, address: str):
         erc20_queryset = self.filter_queryset(
             ERC20Transfer.objects.to_or_from(address).token_txs()
@@ -868,15 +907,36 @@ class SafeTransferListView(ListAPIView):
             erc20_queryset, erc721_queryset, ether_queryset
         )
 
-    def get_queryset(self):
+    def get_queryset(self, unique_hash: Optional[str] = None):
+        if unique_hash:
+            transfer_type, tx_hash, log_or_trace = self.get_unique_hash_params(
+                unique_hash
+            )
+            if transfer_type == "i":
+                # It is an ethereumTransfer
+                return self.get_ethereum_transfer(tx_hash, log_or_trace)
+            else:
+                # It is an tokenTransfer
+                return self.get_token_transfer(tx_hash, log_or_trace)
+        # Last case we return all for address
         address = self.kwargs["address"]
         return self.get_transfers(address)
 
     def list(self, request, *args, **kwargs):
         # Queryset must be already filtered, as we cannot filter a union
         # queryset = self.filter_queryset(self.get_queryset())
-
-        queryset = self.get_queryset()
+        unique_hash = self.request.query_params.get("unique_hash", None)
+        # Len should be Hex256 (64) + type char (1) bigger or equal than 65
+        if unique_hash and len(unique_hash) < 65:
+            return Response(
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                data={
+                    "code": 1,
+                    "message": "unique_hash is too short",
+                    "arguments": [unique_hash],
+                },
+            )
+        queryset = self.get_queryset(unique_hash)
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(
@@ -893,7 +953,10 @@ class SafeTransferListView(ListAPIView):
         responses={
             200: serializers.TransferWithTokenInfoResponseSerializer(many=True),
             422: "Safe address checksum not valid",
-        }
+        },
+        manual_parameters=[
+            _schema_unique_hash,
+        ],
     )
     def get(self, request, address, format=None):
         """
