@@ -30,7 +30,10 @@ from gnosis.safe import CannotEstimateGas
 
 from safe_transaction_service import __version__
 from safe_transaction_service.tokens.models import Token
-from safe_transaction_service.utils.utils import parse_boolean_query_param
+from safe_transaction_service.utils.utils import (
+    get_unique_hash_params,
+    parse_boolean_query_param,
+)
 
 from . import filters, pagination, serializers
 from .models import (
@@ -314,15 +317,63 @@ class SafeModuleTransactionListView(ListAPIView):
     pagination_class = pagination.DefaultPagination
     serializer_class = serializers.SafeModuleTransactionResponseSerializer
 
-    def get_queryset(self):
-        return (
-            ModuleTransaction.objects.filter(safe=self.kwargs["address"])
-            .select_related("internal_tx__ethereum_tx__block")
-            .order_by("-created")
-        )
+    _schema_unique_hash = openapi.Parameter(
+        "unique_hash",
+        openapi.IN_QUERY,
+        type=openapi.TYPE_STRING,
+        default=None,
+        description="Parameter search by transfer unique hash",
+    )
+
+    def get_queryset(self, unique_hash: Optional[str] = None):
+        if unique_hash:
+            _, tx_hash, trace_address = get_unique_hash_params(unique_hash)
+            return (
+                ModuleTransaction.objects.filter(
+                    safe=self.kwargs["address"],
+                    internal_tx__ethereum_tx_id=tx_hash,
+                    internal_tx__trace_address=trace_address,
+                )
+                .select_related("internal_tx__ethereum_tx__block")
+                .order_by("-created")
+            )
+        else:
+            return (
+                ModuleTransaction.objects.filter(safe=self.kwargs["address"])
+                .select_related("internal_tx__ethereum_tx__block")
+                .order_by("-created")
+            )
+
+    def list(self, request, *args, **kwargs):
+        unique_hash = self.request.query_params.get("unique_hash", None)
+        # Len should be Hex256 (64) + type char (1) bigger or equal than 65
+        if unique_hash and len(unique_hash) < 65:
+            return Response(
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                data={
+                    "code": 1,
+                    "message": "unique_hash is too short",
+                    "arguments": [unique_hash],
+                },
+            )
+        queryset = self.filter_queryset(self.get_queryset(unique_hash))
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = serializers.SafeModuleTransactionResponseSerializer(
+                page, many=True
+            )
+            return self.get_paginated_response(serializer.data)
+        else:
+            serializer = serializers.SafeModuleTransactionResponseSerializer(
+                queryset, many=True
+            )
+            return Response(serializer.data)
 
     @swagger_auto_schema(
-        responses={400: "Invalid data", 422: "Invalid ethereum address"}
+        responses={400: "Invalid data", 422: "Invalid ethereum address"},
+        manual_parameters=[
+            _schema_unique_hash,
+        ],
     )
     def get(self, request, address, format=None):
         """
@@ -862,14 +913,6 @@ class SafeTransferListView(ListAPIView):
             transfer["token"] = tokens.get(transfer["token_address"])
         return transfers
 
-    # get_unique_hash_params split
-    def get_unique_hash_params(self, unique_hash: str) -> Tuple[str, str, str]:
-        """
-        Returns a tuple of type of transfer (i means InternalTx or e means TokenTransfer), transaction_hash, log_index
-        for transfer or trace_address for InternalTx
-        """
-        return unique_hash[0], unique_hash[1:65], unique_hash[65:]
-
     def get_token_transfer(self, transaction_hash: str, log_index: str):
         erc20_queryset = self.filter_queryset(
             ERC20Transfer.objects.filter(
@@ -909,9 +952,7 @@ class SafeTransferListView(ListAPIView):
 
     def get_queryset(self, unique_hash: Optional[str] = None):
         if unique_hash:
-            transfer_type, tx_hash, log_or_trace = self.get_unique_hash_params(
-                unique_hash
-            )
+            transfer_type, tx_hash, log_or_trace = get_unique_hash_params(unique_hash)
             if transfer_type == "i":
                 # It is an ethereumTransfer
                 return self.get_ethereum_transfer(tx_hash, log_or_trace)

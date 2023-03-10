@@ -465,6 +465,15 @@ class TestViews(SafeTestCaseMixin, APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["count"], 1)
 
+        # Test unique_hash filter
+        url = (
+            reverse("v1:history:module-transactions", args=(safe_address,))
+            + f"?unique_hash=i{module_transaction.internal_tx.ethereum_tx_id[2:]}{module_transaction.internal_tx.trace_address}"
+        )
+        response = self.client.get(url, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+
     def test_get_multisig_confirmation(self):
         random_safe_tx_hash = Web3.keccak(text="enxebre").hex()
         response = self.client.get(

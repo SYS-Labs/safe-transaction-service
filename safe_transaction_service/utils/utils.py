@@ -1,6 +1,6 @@
 from functools import wraps
 from itertools import islice
-from typing import Any, Iterable, List, Union
+from typing import Any, Iterable, List, Tuple, Union
 
 from django.core.signals import request_finished
 from django.db import connection
@@ -61,3 +61,11 @@ def close_gevent_db_connection_decorator(f):
 
 def parse_boolean_query_param(value: Union[bool, str, int]) -> bool:
     return value in (True, "True", "true", "1", 1)
+
+
+def get_unique_hash_params(unique_hash: str) -> Tuple[str, str, str]:
+    """
+    Returns a tuple of type of transfer (i means InternalTx or e means TokenTransfer), transaction_hash, log_index
+    for transfer or trace_address for InternalTx
+    """
+    return unique_hash[0], unique_hash[1:65], unique_hash[65:]

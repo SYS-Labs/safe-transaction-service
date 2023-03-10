@@ -474,6 +474,7 @@ class SafeModuleTransactionResponseSerializer(GnosisBaseModelSerializer):
     transaction_hash = serializers.SerializerMethodField()
     block_number = serializers.SerializerMethodField()
     is_successful = serializers.SerializerMethodField()
+    unique_hash = serializers.SerializerMethodField()
 
     class Meta:
         model = ModuleTransaction
@@ -490,6 +491,7 @@ class SafeModuleTransactionResponseSerializer(GnosisBaseModelSerializer):
             "data",
             "operation",
             "data_decoded",
+            "unique_hash",
         )
 
     def get_block_number(self, obj: ModuleTransaction) -> Optional[int]:
@@ -505,6 +507,13 @@ class SafeModuleTransactionResponseSerializer(GnosisBaseModelSerializer):
 
     def get_transaction_hash(self, obj: ModuleTransaction) -> str:
         return obj.internal_tx.ethereum_tx_id
+
+    def get_unique_hash(self, obj: ModuleTransaction) -> str:
+        return (
+            "i"
+            + obj.internal_tx.ethereum_tx.tx_hash[2:]
+            + obj.internal_tx.trace_address
+        )
 
 
 class SafeMultisigConfirmationResponseSerializer(GnosisBaseModelSerializer):
