@@ -474,7 +474,7 @@ class SafeModuleTransactionResponseSerializer(GnosisBaseModelSerializer):
     transaction_hash = serializers.SerializerMethodField()
     block_number = serializers.SerializerMethodField()
     is_successful = serializers.SerializerMethodField()
-    unique_hash = serializers.SerializerMethodField()
+    generated_id = serializers.SerializerMethodField()
 
     class Meta:
         model = ModuleTransaction
@@ -491,7 +491,7 @@ class SafeModuleTransactionResponseSerializer(GnosisBaseModelSerializer):
             "data",
             "operation",
             "data_decoded",
-            "unique_hash",
+            "generated_id",
         )
 
     def get_block_number(self, obj: ModuleTransaction) -> Optional[int]:
@@ -508,7 +508,7 @@ class SafeModuleTransactionResponseSerializer(GnosisBaseModelSerializer):
     def get_transaction_hash(self, obj: ModuleTransaction) -> str:
         return obj.internal_tx.ethereum_tx_id
 
-    def get_unique_hash(self, obj: ModuleTransaction) -> str:
+    def get_generated_id(self, obj: ModuleTransaction) -> str:
         return (
             "i"
             + obj.internal_tx.ethereum_tx.tx_hash[2:]
@@ -740,7 +740,7 @@ class TransferResponseSerializer(serializers.Serializer):
     value = serializers.CharField(allow_null=True, source="_value")
     token_id = serializers.CharField(allow_null=True, source="_token_id")
     token_address = EthereumAddressField(allow_null=True, default=None)
-    unique_hash = serializers.SerializerMethodField()
+    generated_id = serializers.SerializerMethodField()
 
     def get_fields(self):
         result = super().get_fields()
@@ -759,7 +759,7 @@ class TransferResponseSerializer(serializers.Serializer):
                 return TransferType.ERC721_TRANSFER.name
             return TransferType.UNKNOWN.name
 
-    def get_unique_hash(self, obj: TransferDict) -> str:
+    def get_generated_id(self, obj: TransferDict) -> str:
         # Remove 0x on transaction_hash
         transaction_hash = obj["transaction_hash"][2:]
         if self.get_type(obj) == "ETHER_TRANSFER":

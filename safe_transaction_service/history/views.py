@@ -31,7 +31,7 @@ from gnosis.safe import CannotEstimateGas
 from safe_transaction_service import __version__
 from safe_transaction_service.tokens.models import Token
 from safe_transaction_service.utils.utils import (
-    get_unique_hash_params,
+    get_generated_id_parts,
     parse_boolean_query_param,
 )
 
@@ -318,16 +318,16 @@ class SafeModuleTransactionListView(ListAPIView):
     serializer_class = serializers.SafeModuleTransactionResponseSerializer
 
     _schema_unique_hash = openapi.Parameter(
-        "unique_hash",
+        "generated_id",
         openapi.IN_QUERY,
         type=openapi.TYPE_STRING,
         default=None,
         description="Parameter search by transfer unique hash",
     )
 
-    def get_queryset(self, unique_hash: Optional[str] = None):
-        if unique_hash:
-            _, tx_hash, trace_address = get_unique_hash_params(unique_hash)
+    def get_queryset(self, generated_id: Optional[str] = None):
+        if generated_id:
+            _, tx_hash, trace_address = get_generated_id_parts(generated_id)
             return (
                 ModuleTransaction.objects.filter(
                     safe=self.kwargs["address"],
@@ -345,18 +345,18 @@ class SafeModuleTransactionListView(ListAPIView):
             )
 
     def list(self, request, *args, **kwargs):
-        unique_hash = self.request.query_params.get("unique_hash", None)
+        generated_id = self.request.query_params.get("generated_id", None)
         # Len should be Hex256 (64) + type char (1) bigger or equal than 65
-        if unique_hash and len(unique_hash) < 65:
+        if generated_id and len(generated_id) < 65:
             return Response(
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 data={
                     "code": 1,
-                    "message": "unique_hash is too short",
-                    "arguments": [unique_hash],
+                    "message": "generated_id is too short",
+                    "arguments": [generated_id],
                 },
             )
-        queryset = self.filter_queryset(self.get_queryset(unique_hash))
+        queryset = self.filter_queryset(self.get_queryset(generated_id))
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = serializers.SafeModuleTransactionResponseSerializer(
@@ -891,7 +891,7 @@ class SafeTransferListView(ListAPIView):
     pagination_class = pagination.DefaultPagination
 
     _schema_unique_hash = openapi.Parameter(
-        "unique_hash",
+        "generated_id",
         openapi.IN_QUERY,
         type=openapi.TYPE_STRING,
         default=None,
@@ -950,9 +950,9 @@ class SafeTransferListView(ListAPIView):
             erc20_queryset, erc721_queryset, ether_queryset
         )
 
-    def get_queryset(self, unique_hash: Optional[str] = None):
-        if unique_hash:
-            transfer_type, tx_hash, log_or_trace = get_unique_hash_params(unique_hash)
+    def get_queryset(self, generated_id: Optional[str] = None):
+        if generated_id:
+            transfer_type, tx_hash, log_or_trace = get_generated_id_parts(generated_id)
             if transfer_type == "i":
                 # It is an ethereumTransfer
                 return self.get_ethereum_transfer(tx_hash, log_or_trace)
@@ -966,18 +966,18 @@ class SafeTransferListView(ListAPIView):
     def list(self, request, *args, **kwargs):
         # Queryset must be already filtered, as we cannot filter a union
         # queryset = self.filter_queryset(self.get_queryset())
-        unique_hash = self.request.query_params.get("unique_hash", None)
+        generated_id = self.request.query_params.get("generated_id", None)
         # Len should be Hex256 (64) + type char (1) bigger or equal than 65
-        if unique_hash and len(unique_hash) < 65:
+        if generated_id and len(generated_id) < 65:
             return Response(
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 data={
                     "code": 1,
-                    "message": "unique_hash is too short",
-                    "arguments": [unique_hash],
+                    "message": "generated_id is too short",
+                    "arguments": [generated_id],
                 },
             )
-        queryset = self.get_queryset(unique_hash)
+        queryset = self.get_queryset(generated_id)
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(

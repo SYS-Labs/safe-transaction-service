@@ -63,9 +63,9 @@ def parse_boolean_query_param(value: Union[bool, str, int]) -> bool:
     return value in (True, "True", "true", "1", 1)
 
 
-def get_unique_hash_params(unique_hash: str) -> Tuple[str, str, str]:
+def get_generated_id_parts(generated_id: str) -> Tuple[str, str, str]:
     """
     Returns a tuple of type of transfer (i means InternalTx or e means TokenTransfer), transaction_hash, log_index
     for transfer or trace_address for InternalTx
     """
-    return unique_hash[0], unique_hash[1:65], unique_hash[65:]
+    return generated_id[0], generated_id[1:65], generated_id[65:]
