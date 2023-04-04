@@ -1538,11 +1538,22 @@ class SafeMasterCopy(MonitoredAddress):
         ordering = ["tx_block_number"]
 
 
+class SafeContractManager(models.Manager):
+    def is_blacklisted(self, address):
+        try:
+            return self.get(address=address).blacklisted
+        except SafeContract.DoesNotExist:
+            return False
+
+
 class SafeContract(models.Model):
+    objects = SafeContractManager()
     address = EthereumAddressV2Field(primary_key=True)
     ethereum_tx = models.ForeignKey(
         EthereumTx, on_delete=models.CASCADE, related_name="safe_contracts"
     )
+    # Avoid to index events from problematic safes like non verified contracts
+    blacklisted = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Safe address={self.address} - ethereum-tx={self.ethereum_tx_id}"

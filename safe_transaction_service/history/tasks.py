@@ -32,6 +32,7 @@ from .models import (
     EthereumBlock,
     InternalTxDecoded,
     MultisigTransaction,
+    SafeContract,
     SafeLastStatus,
     SafeStatus,
     WebHook,
@@ -355,6 +356,13 @@ def process_decoded_internal_txs_for_safe_task(
             logger.info(
                 "Start processing decoded internal txs for safe %s", safe_address
             )
+            if SafeContract.objects.is_blacklisted(safe_address):
+                logger.info(
+                    "Ignoring decoded internal txs for blacklisted safe %s",
+                    safe_address,
+                )
+                return 0
+
             tx_processor: SafeTxProcessor = SafeTxProcessorProvider()
             index_service: IndexService = IndexServiceProvider()
 
